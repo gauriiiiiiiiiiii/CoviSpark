@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COVID-19 Big Data Analysis Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --red: #f87171;
+      --green: #4ade80;
+      --orange: #fb923c;
+      --purple: #c084fc;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+    header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 1.75rem; color: var(--accent); }
+    header p  { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+    .badge {
+      display: inline-block; background: #0c4a6e; color: var(--accent);
+      border: 1px solid var(--accent); border-radius: 4px;
+      font-size: 0.7rem; padding: 2px 8px; margin-left: 12px; vertical-align: middle;
+    }
+    main { padding: 32px; max-width: 1400px; margin: 0 auto; }
+    .stats-row {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;
+    }
+    .stat-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 20px; text-align: center;
+    }
+    .stat-card .value { font-size: 2rem; font-weight: 700; }
+    .stat-card .label { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+    .grid-1 { margin-bottom: 24px; }
+    .chart-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px;
+    }
+    .chart-card h2 { font-size: 1rem; color: var(--text); margin-bottom: 16px; }
+    .chart-card .subtitle { font-size: 0.8rem; color: var(--muted); margin-top: -12px; margin-bottom: 16px; }
+    canvas { max-height: 320px; }
+    footer {
+      text-align: center; color: var(--muted); font-size: 0.8rem;
+      padding: 24px; border-top: 1px solid var(--border); margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>COVID-19 Big Data Analysis Dashboard
+    <span class="badge">Hadoop + Spark</span>
+  </h1>
+  <p>CSBB 422 — Big Data Analytics Lab Project &nbsp;|&nbsp; Powered by Apache Hadoop 3.2 &amp; PySpark 3.5</p>
+</header>
+
+<main>
+  <!-- KPI Row -->
+  <div class="stats-row" id="kpi-row">
+    <div class="stat-card"><div class="value" id="kpi-countries" style="color:var(--accent)">—</div><div class="label">Countries Analyzed</div></div>
+    <div class="stat-card"><div class="value" id="kpi-cases"     style="color:var(--orange)">—</div><div class="label">Global Total Cases</div></div>
+    <div class="stat-card"><div class="value" id="kpi-deaths"    style="color:var(--red)">—</div><div class="label">Global Total Deaths</div></div>
+    <div class="stat-card"><div class="value" id="kpi-cfr"       style="color:var(--purple)">—</div><div class="label">Avg Case-Fatality Rate</div></div>
+  </div>
+
+  <!-- Row 1: Top 10 countries + Continent distribution -->
+  <div class="grid-2">
+    <div class="chart-card">
+      <h2>Top 10 Countries — Total Cases</h2>
+      <p class="subtitle">Highest cumulative confirmed cases</p>
+      <canvas id="chart-top10"></canvas>
+    </div>
+    <div class="chart-card">
+      <h2>Continent-wise Case Distribution</h2>
+      <p class="subtitle">Share of global cases per continent</p>
+      <canvas id="chart-continents"></canvas>
+    </div>
+  </div>
+
+  <!-- Row 2: Global wave -->
+  <div class="grid-1">
+    <div class="chart-card">
+      <h2>Global Infection Wave (7-day Rolling Average)</h2>
+      <p class="subtitle">Daily new cases worldwide with smoothed trend</p>
+      <canvas id="chart-wave" style="max-height:260px"></canvas>
+    </div>
+  </div>
+
+  <!-- Row 3: CFR + Vaccination -->
+  <div class="grid-2">
+    <div class="chart-card">
+      <h2>Case-Fatality Rate by Country (%)</h2>
+      <p class="subtitle">Deaths per 100 confirmed cases (countries &gt; 1000 cases)</p>
+      <canvas id="chart-cfr"></canvas>
+    </div>
+    <div class="chart-card">
+      <h2>Vaccination Progress (%)</h2>
+      <p class="subtitle">% of population vaccinated (at least 1 dose)</p>
+      <canvas id="chart-vax"></canvas>
+    </div>
+  </div>
+</main>
+
+<footer>COVID-19 Data Analysis &nbsp;|&nbsp; CSBB 422 Big Data Analytics &nbsp;|&nbsp; Built with Apache Hadoop + Spark + Flask</footer>
+
+<script>
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: true,
+  plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e293b' } },
+    y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#334155' } }
+  }
+};
+
+function fmt(n) {
+  if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0) + 'K';
+  return n;
+}
+
+const COLORS = ['#38bdf8','#fb923c','#4ade80','#c084fc','#f87171',
+                '#facc15','#34d399','#f472b6','#60a5fa','#a78bfa'];
+
+async function loadAll() {
+  const [top10, continents, wave, cfr, vax] = await Promise.all([
+    fetch('/api/top10').then(r=>r.json()),
+    fetch('/api/continents').then(r=>r.json()),
+    fetch('/api/wave').then(r=>r.json()),
+    fetch('/api/cfr').then(r=>r.json()),
+    fetch('/api/vaccination').then(r=>r.json()),
+  ]);
+
+  // KPIs
+  const totalCases  = continents.reduce((s,r)=>s+r.total_cases,0);
+  const totalDeaths = continents.reduce((s,r)=>s+r.total_deaths,0);
+  const avgCFR      = cfr.length ? (cfr.reduce((s,r)=>s+r.cfr_pct,0)/cfr.length).toFixed(2) : '—';
+  document.getElementById('kpi-countries').textContent = top10.length + '+';
+  document.getElementById('kpi-cases').textContent     = fmt(totalCases);
+  document.getElementById('kpi-deaths').textContent    = fmt(totalDeaths);
+  document.getElementById('kpi-cfr').textContent       = avgCFR + '%';
+
+  // Chart 1: Top 10 horizontal bar
+  new Chart(document.getElementById('chart-top10'), {
+    type: 'bar',
+    data: {
+      labels: top10.map(r=>r.country),
+      datasets: [{
+        label: 'Total Cases',
+        data: top10.map(r=>r.total_cases),
+        backgroundColor: COLORS,
+      }]
+    },
+    options: { ...CHART_DEFAULTS, indexAxis: 'y',
+      plugins: { ...CHART_DEFAULTS.plugins, legend: { display: false } } }
+  });
+
+  // Chart 2: Continent doughnut
+  new Chart(document.getElementById('chart-continents'), {
+    type: 'doughnut',
+    data: {
+      labels: continents.map(r=>r.continent),
+      datasets: [{ data: continents.map(r=>r.total_cases), backgroundColor: COLORS }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'right', labels: { color: '#94a3b8', font:{size:11} } } }
+    }
+  });
+
+  // Chart 3: Wave line
+  new Chart(document.getElementById('chart-wave'), {
+    type: 'line',
+    data: {
+      labels: wave.map(r=>r.date),
+      datasets: [
+        { label: 'Daily Cases', data: wave.map(r=>r.daily_cases),
+          borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)',
+          fill: true, pointRadius: 0, tension: 0.3 },
+        { label: '7-day Avg', data: wave.map(r=>r.rolling_avg),
+          borderColor: '#fb923c', borderWidth: 2,
+          pointRadius: 0, tension: 0.4 }
+      ]
+    },
+    options: { ...CHART_DEFAULTS,
+      scales: {
+        x: { ticks: { color:'#94a3b8', maxTicksLimit: 12, font:{size:10} }, grid:{color:'#1e293b'} },
+        y: { ticks: { color:'#94a3b8', font:{size:10} }, grid:{color:'#334155'} }
+      }
+    }
+  });
+
+  // Chart 4: CFR horizontal bar
+  new Chart(document.getElementById('chart-cfr'), {
+    type: 'bar',
+    data: {
+      labels: cfr.map(r=>r.country),
+      datasets: [{ label: 'CFR %', data: cfr.map(r=>r.cfr_pct), backgroundColor: '#f87171' }]
+    },
+    options: { ...CHART_DEFAULTS, indexAxis: 'y',
+      plugins: { ...CHART_DEFAULTS.plugins, legend:{display:false} } }
+  });
+
+  // Chart 5: Vaccination bar
+  new Chart(document.getElementById('chart-vax'), {
+    type: 'bar',
+    data: {
+      labels: vax.map(r=>r.country),
+      datasets: [{ label: 'Vaccinated %', data: vax.map(r=>r.vax_pct), backgroundColor: '#4ade80' }]
+    },
+    options: { ...CHART_DEFAULTS, indexAxis: 'y',
+      plugins: { ...CHART_DEFAULTS.plugins, legend:{display:false} } }
+  });
+}
+
+loadAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+version: "3.8"
+
+# COVID-19 Big Data Analysis Cluster
+# Master: namenode + spark-master
+# Workers: datanode1, datanode2 + spark-worker1, spark-worker2
+
+x-hadoop-env: &hadoop-env
+  CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+  CORE_CONF_hadoop_tmp_dir: /hadoop/tmp
+  HDFS_CONF_dfs_replication: 2
+  HDFS_CONF_dfs_webhdfs_enabled: "true"
+  YARN_CONF_yarn_resourcemanager_hostname: namenode
+  YARN_CONF_yarn_nodemanager_aux__services: mapreduce_shuffle
+
+services:
+  # ─── HADOOP MASTER (NameNode + ResourceManager) ───────────────────────────
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"   # HDFS Web UI
+      - "9000:9000"   # HDFS RPC
+      - "8088:8088"   # YARN ResourceManager UI
+    environment:
+      <<: *hadoop-env
+      CLUSTER_NAME: covid19-cluster
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+      - ./data:/data
+      - ./config/core-site.xml:/etc/hadoop/core-site.xml
+      - ./config/hdfs-site.xml:/etc/hadoop/hdfs-site.xml
+      - ./config/mapred-site.xml:/etc/hadoop/mapred-site.xml
+      - ./config/yarn-site.xml:/etc/hadoop/yarn-site.xml
+      - ./config/workers:/etc/hadoop/workers
+      - ./mapreduce:/mapreduce
+      - ./results:/results
+    networks:
+      - hadoop-net
+
+  # ─── HADOOP WORKERS (DataNode + NodeManager) ──────────────────────────────
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    hostname: datanode1
+    depends_on:
+      - namenode
+    environment:
+      <<: *hadoop-env
+      SERVICE_PRECONDITION: "namenode:9870"
+    volumes:
+      - datanode1_data:/hadoop/dfs/data
+    networks:
+      - hadoop-net
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    hostname: datanode2
+    depends_on:
+      - namenode
+    environment:
+      <<: *hadoop-env
+      SERVICE_PRECONDITION: "namenode:9870"
+    volumes:
+      - datanode2_data:/hadoop/dfs/data
+    networks:
+      - hadoop-net
+
+  # ─── SPARK MASTER ─────────────────────────────────────────────────────────
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: spark-master
+    hostname: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_MASTER_WEBUI_PORT=8080
+    ports:
+      - "8080:8080"   # Spark Master Web UI
+      - "7077:7077"   # Spark Master RPC
+    volumes:
+      - ./spark:/spark
+      - ./data:/data
+      - ./results:/results
+    networks:
+      - hadoop-net
+
+  # ─── SPARK WORKERS ────────────────────────────────────────────────────────
+  spark-worker1:
+    image: bitnami/spark:3.5
+    container_name: spark-worker1
+    hostname: spark-worker1
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=2
+    volumes:
+      - ./data:/data
+      - ./results:/results
+    networks:
+      - hadoop-net
+
+  spark-worker2:
+    image: bitnami/spark:3.5
+    container_name: spark-worker2
+    hostname: spark-worker2
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=2
+    volumes:
+      - ./data:/data
+      - ./results:/results
+    networks:
+      - hadoop-net
+
+  # ─── DASHBOARD ────────────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: covid-dashboard
+    ports:
+      - "5000:5000"   # Flask Dashboard
+    volumes:
+      - ./results:/results
+      - ./data:/data
+    networks:
+      - hadoop-net
+    depends_on:
+      - spark-master
+
+volumes:
+  namenode_data:
+  datanode1_data:
+  datanode2_data:
+
+networks:
+  hadoop-net:
+    driver: bridge
