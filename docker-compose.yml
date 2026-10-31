@@ -1,19 +1,17 @@
-version: "3.8"
-
 # COVID-19 Big Data Analysis Cluster
-# Master: namenode + spark-master
-# Workers: datanode1, datanode2 + spark-worker1, spark-worker2
+# Masters: namenode, resourcemanager, spark-master
+# Workers: datanode1, datanode2, nodemanager1, nodemanager2, spark-worker1, spark-worker2
 
 x-hadoop-env: &hadoop-env
   CORE_CONF_fs_defaultFS: hdfs://namenode:9000
   CORE_CONF_hadoop_tmp_dir: /hadoop/tmp
   HDFS_CONF_dfs_replication: 2
   HDFS_CONF_dfs_webhdfs_enabled: "true"
-  YARN_CONF_yarn_resourcemanager_hostname: namenode
+  YARN_CONF_yarn_resourcemanager_hostname: resourcemanager
   YARN_CONF_yarn_nodemanager_aux__services: mapreduce_shuffle
 
 services:
-  # ─── HADOOP MASTER (NameNode + ResourceManager) ───────────────────────────
+  # ─── HADOOP MASTER (NameNode) ──────────────────────────────────────────
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     container_name: namenode
@@ -21,7 +19,6 @@ services:
     ports:
       - "9870:9870"   # HDFS Web UI
       - "9000:9000"   # HDFS RPC
-      - "8088:8088"   # YARN ResourceManager UI
     environment:
       <<: *hadoop-env
       CLUSTER_NAME: covid19-cluster
@@ -67,11 +64,66 @@ services:
     networks:
       - hadoop-net
 
+  # ─── YARN MASTER (ResourceManager) ────────────────────────────────────────
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    hostname: resourcemanager
+    ports:
+      - "8088:8088"   # YARN ResourceManager UI
+    environment:
+      <<: *hadoop-env
+      SERVICE_PRECONDITION: "namenode:9870 datanode1:9864 datanode2:9864"
+      HADOOP_HEAPSIZE_MAX: 384m
+    volumes:
+      - ./config/core-site.xml:/etc/hadoop/core-site.xml
+      - ./config/hdfs-site.xml:/etc/hadoop/hdfs-site.xml
+      - ./config/mapred-site.xml:/etc/hadoop/mapred-site.xml
+      - ./config/yarn-site.xml:/etc/hadoop/yarn-site.xml
+    networks:
+      - hadoop-net
+
+  # ─── YARN WORKERS (NodeManager, with python3 for Hadoop Streaming) ────────
+  nodemanager1:
+    build:
+      context: ./hadoop/nodemanager
+    container_name: nodemanager1
+    hostname: nodemanager1
+    environment:
+      <<: *hadoop-env
+      SERVICE_PRECONDITION: "resourcemanager:8088"
+      HADOOP_HEAPSIZE_MAX: 256m
+    volumes:
+      - ./config/core-site.xml:/etc/hadoop/core-site.xml
+      - ./config/hdfs-site.xml:/etc/hadoop/hdfs-site.xml
+      - ./config/mapred-site.xml:/etc/hadoop/mapred-site.xml
+      - ./config/yarn-site.xml:/etc/hadoop/yarn-site.xml
+    networks:
+      - hadoop-net
+
+  nodemanager2:
+    build:
+      context: ./hadoop/nodemanager
+    container_name: nodemanager2
+    hostname: nodemanager2
+    environment:
+      <<: *hadoop-env
+      SERVICE_PRECONDITION: "resourcemanager:8088"
+      HADOOP_HEAPSIZE_MAX: 256m
+    volumes:
+      - ./config/core-site.xml:/etc/hadoop/core-site.xml
+      - ./config/hdfs-site.xml:/etc/hadoop/hdfs-site.xml
+      - ./config/mapred-site.xml:/etc/hadoop/mapred-site.xml
+      - ./config/yarn-site.xml:/etc/hadoop/yarn-site.xml
+    networks:
+      - hadoop-net
+
   # ─── SPARK MASTER ─────────────────────────────────────────────────────────
   spark-master:
-    image: bitnami/spark:3.5
+    image: bitnamilegacy/spark:3.5
     container_name: spark-master
     hostname: spark-master
+    user: root
     environment:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -89,9 +141,10 @@ services:
 
   # ─── SPARK WORKERS ────────────────────────────────────────────────────────
   spark-worker1:
-    image: bitnami/spark:3.5
+    image: bitnamilegacy/spark:3.5
     container_name: spark-worker1
     hostname: spark-worker1
+    user: root
     depends_on:
       - spark-master
     environment:
@@ -106,9 +159,10 @@ services:
       - hadoop-net
 
   spark-worker2:
-    image: bitnami/spark:3.5
+    image: bitnamilegacy/spark:3.5
     container_name: spark-worker2
     hostname: spark-worker2
+    user: root
     depends_on:
       - spark-master
     environment:

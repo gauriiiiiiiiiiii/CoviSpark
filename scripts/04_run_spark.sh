@@ -3,14 +3,16 @@
 set -e
 
 echo "==> Submitting PySpark job to Spark cluster..."
-docker exec spark-master spark-submit \
+docker exec \
+  -e "COVID_DATA=/data/owid-covid-data.csv" \
+  -e "COVID_RESULTS=/results" \
+  spark-master spark-submit \
   --master spark://spark-master:7077 \
   --deploy-mode client \
   --executor-memory 1G \
   --executor-cores 2 \
   --conf "spark.sql.shuffle.partitions=4" \
-  -e "COVID_DATA=/data/owid-covid-data.csv" \
-  -e "COVID_RESULTS=/results" \
+  --conf "spark.jars.ivy=/tmp/.ivy2" \
   /spark/covid_analysis.py
 
 echo ""

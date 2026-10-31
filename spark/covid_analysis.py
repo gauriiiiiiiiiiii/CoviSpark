@@ -46,7 +46,7 @@ top10_cases = (
     df.groupBy("location", "continent")
       .agg(F.max("total_cases").alias("total_cases"),
            F.max("total_deaths").alias("total_deaths"))
-      .orderBy(F.col("total_cases").desc())
+      .orderBy(F.col("total_cases").desc(), F.col("location"))
       .limit(10)
 )
 top10_rows = top10_cases.collect()
@@ -112,7 +112,7 @@ cfr = (
       .filter(F.col("total_cases") > 1000)
       .withColumn("cfr_pct",
                   F.round((F.col("total_deaths") / F.col("total_cases")) * 100, 3))
-      .orderBy(F.col("cfr_pct").desc())
+      .orderBy(F.col("cfr_pct").desc(), F.col("location"))
       .limit(15)
 )
 cfr_rows = cfr.collect()
@@ -136,7 +136,7 @@ vax = (
       .filter(F.col("population") > 0)
       .withColumn("vax_pct",
                   F.round((F.col("vaccinated") / F.col("population")) * 100, 2))
-      .orderBy(F.col("vax_pct").desc())
+      .orderBy(F.col("vax_pct").desc(), F.col("location"))
       .limit(15)
 )
 vax_rows = vax.collect()

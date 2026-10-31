@@ -17,3 +17,6 @@ __pycache__/
 # Spark logs
 derby.log
 metastore_db/
+
+# Local virtualenv
+.venv/

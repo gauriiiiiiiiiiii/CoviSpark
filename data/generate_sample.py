@@ -1,5 +1,6 @@
 """Generate a realistic COVID-19 sample dataset (no internet needed)."""
 import csv
+import os
 import random
 from datetime import date, timedelta
 
@@ -71,7 +72,7 @@ for iso, continent, population in COUNTRIES:
         })
         d += timedelta(days=1)
 
-outfile = "owid-covid-data.csv"
+outfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), "owid-covid-data.csv")
 with open(outfile, "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=rows[0].keys())
     writer.writeheader()

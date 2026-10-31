@@ -33,11 +33,11 @@ for line in sys.stdin:
         total_deaths += deaths
     else:
         if current_country is not None:
-            print(f"{current_country},{current_continent},{total_cases},{total_deaths}")
+            print("{},{},{},{}".format(current_country, current_continent, total_cases, total_deaths))
         current_country   = country
         current_continent = continent
         total_cases  = cases
         total_deaths = deaths
 
 if current_country is not None:
-    print(f"{current_country},{current_continent},{total_cases},{total_deaths}")
+    print("{},{},{},{}".format(current_country, current_continent, total_cases, total_deaths))
